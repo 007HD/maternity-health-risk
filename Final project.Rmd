@@ -1,0 +1,304 @@
+---
+title: "Final Project"
+author: "Group 2 - Andrea Carolina Herrera, Harsh Dholakia, Tao Tang"
+date: "2022-11-19"
+output: html_document
+---
+
+
+```{r echo = F, message = F}
+here::i_am('Final project.rmd')
+#Load the dataset
+library(here)
+data_p<- read.csv(here("final project.csv"))
+
+knitr::opts_chunk$set(echo = F)
+```
+
+Data Cleaning.
+
+* Making sure data is accurate
+  * Accuracy
+  
+```{r}
+#1. Accuracy. 
+summary(data_p)
+```
+
+* Convert outcome variable to factor. 
+  * Renamed possible results to "low" , "medium" , "high"
+  
+```{r include=FALSE}
+#a. Convert outcome variable to factor. Rename possible results to "low" , "medium" , "high"
+
+data_p$RiskLevel<- factor(data_p$RiskLevel , levels = c("low risk" , "mid risk" , "high risk") , labels = c("low" , "medium", "high"))
+```
+
+```{r}
+#Accuracy. 
+head(data_p)
+```
+
+```{r include=FALSE}
+#Min and Max values. When looking at Age, the range goes from 10 to 70 which does not make sense. Based on previous studies, researches agreed that for this study the range will be 20 to 45 years old.
+data_p$Age[data_p$Age < 20] <- NA
+data_p$Age[data_p$Age > 45] <- NA
+```
+
+* Summary of data frame with missing values
+
+```{r}
+summary(data_p)
+```
+
+```{r include=FALSE}
+percentmiss<- function(x){sum(is.na(x))/length(x) * 100}
+missing.data<- apply(data_p , 1 , percentmiss)
+table(missing.data)
+
+replace_rows <- subset(data_p, missing.data <= 20) 
+noreplace_rows <- subset(data_p, missing.data > 20)
+
+nrow(data_p)
+nrow(replace_rows)
+
+apply(replace_rows, 2, percentmiss)
+```
+
+* Summary of data frame with no missing values
+
+```{r include=FALSE}
+#replace missing data
+
+library(mice)
+set.seed(1)
+temp_no_miss <- mice(replace_rows)
+data_f <- complete(temp_no_miss, 1)
+```
+
+```{r}
+summary(data_p)
+```
+
+* Outliers
+  * Degrees of freedom is 6
+  * The cutoff score for the Mahalanobis measure is 22.45774
+  * We have 2 outliers that we need to eliminated
+  
+```{r include=FALSE}
+##Outliers
+
+maha<- mahalanobis(data_f[, -7] , 
+                   colMeans(data_f[, -7] , na.rm = TRUE) ,
+                   cov(data_f[, -7] , use = "pairwise.complete.obs"))
+
+
+cutoff<- qchisq(1-0.001 , ncol(data_f[, -7]))
+ncol(data_f[, -7])## df and cutoff. Degrees of freedom is 6
+cutoff
+#The cutoff score for the Mahalanobis measure is 22.45774
+
+summary(maha < cutoff) ## Outliers are stored on False. So, we have 2 outliers that we need to eliminate
+```
+
+  * Summary of data after eliminating outliers
+
+```{r include=FALSE}
+##Eliminating outliers
+data<- subset(data_f , maha < cutoff)
+dim(data_f)
+dim(data)
+```
+
+```{r}
+summary(data)
+
+```
+
+
+* Visualization. 
+  * Histograms
+  
+```{r}
+library(ggplot2)
+cleanup<- theme(panel.grid.major = element_blank() , 
+                panel.grid.minor = element_blank() , 
+                panel.background = element_blank() , 
+                axis.line.x = element_line(color = "black") , 
+                axis.line.y = element_line(color = "black") , 
+                legend.key = element_rect(fill = "white") , 
+                text = element_text(size = 12))
+
+ggplot(data = data , aes(x = SystolicBP)) +
+geom_histogram(binwidth = 15 , color = "purple" , fill = "light blue") + 
+  xlab("Blood pressure - Systolic") +
+  ylab("Frequency") + cleanup
+
+
+ggplot(data = data , aes(x = DiastolicBP)) +
+geom_histogram(binwidth = 15 , color = "purple" , fill = "light blue") + 
+  xlab("Blood pressure - Diastolic") +
+  ylab("Frequency") + cleanup
+
+ggplot(data = data , aes(x = BS)) +
+geom_histogram(binwidth = 15 , color = "purple" , fill = "light blue") + 
+  xlab("Blood sugar") +
+  ylab("Frequency") + cleanup
+
+ggplot(data = data , aes(x = BodyTemp)) +
+geom_histogram(binwidth = 1.5 , color = "purple" , fill = "light blue") + 
+  xlab("Body Temperature") +
+  ylab("Frequency") + cleanup
+
+ggplot(data = data , aes(x = HeartRate)) +
+geom_histogram(binwidth = 5 , color = "purple" , fill = "light blue") + 
+  xlab("Heart Rate") +
+  ylab("Frequency") + cleanup
+
+```
+
+  * Bar Chart
+  
+```{r}
+bar.1<-ggplot(data , aes(Age , RiskLevel))
+bar.1 + stat_summary(fun = mean , 
+                     geom = "bar" , 
+                     position = "dodge") +
+  stat_summary(fun.data = mean_cl_normal , 
+               geom = "errorbar" , 
+               position = position_dodge(width = 0.90) , width = 0.2) +
+  xlab("Age") + ylab("Risk Level") + cleanup
+
+
+
+```
+
+* Ordinal Logistic Regression
+
+```{r include=FALSE}
+library(MASS)
+library(Hmisc)
+library(reshape2)
+sample<- 0.6 *nrow(data)
+set.seed(100)
+index<- sample(seq_len(nrow(data)) , size = sample)
+
+data_train<- data[index,]
+data_test<- data[-index,]
+```
+
+  * Creating a Model
+  
+```{r include=FALSE}
+##Create model
+model_p<- polr(RiskLevel ~ . , data = data_train , Hess = TRUE)
+```
+
+```{r}
+summary(model_p)
+```
+
+```{r include=FALSE}
+##Odds ratio and 95% CI
+c(exp(coef(model_p)) , exp(confint(model_p)))
+library(car)
+```
+    
+  * p-values
+ 
+```{r}
+Anova(model_p , type = 3)
+```
+  * Accuracy
+ 
+```{r include=FALSE}
+prediction<- predict(model_p , data_test)
+results<-table(data_test$RiskLevel , prediction)
+acc<- 100* sum(results[1,1] + results[2,2] + results[3,3]) / sum(results)
+```
+
+```{r}
+acc
+```
+
+* K-fold analysis
+  * Confusion Matrix, Statistics & Accuracy
+  
+```{r include=FALSE}
+
+library(caret)
+
+p<- 0.8
+k<-10
+indx<- createDataPartition(data$RiskLevel , p = p , list = F)
+train<- data[indx,]
+test<- data[-indx,]
+
+fit<- train(
+  form = RiskLevel ~ . ,
+  data = train , 
+  trControl = 
+    trainControl(
+      method = "cv" , ##Cross validation
+      number = k,
+      p = p,
+      verboseIter = T,
+      sampling = "down" ),
+  method = "polr")
+
+pre<- predict(fit, test, type = "prob")[,3]
+
+pre<- ifelse(pre <= 0.3 , "low" , 
+      ifelse((pre>0.3 & pre<=0.6) , "medium" , "high"))
+
+pre<- factor(pre, levels = c("low" , "medium" , "high"))
+```
+
+```{r}
+confusionMatrix(
+  reference = test$RiskLevel , 
+  data = pre)
+```
+
+* K- fold analysis: Random Forest
+  * Confusion Matrix, Statistics & Accuracy
+
+```{r include=FALSE}
+library(caret)
+
+p<- 0.8
+k<-10
+indx<- createDataPartition(data$RiskLevel , p = p , list = F)
+train<- data[indx,]
+test<- data[-indx,]
+
+fit<- train(
+  form = RiskLevel ~ . ,
+  data = train , 
+  trControl = 
+    trainControl(
+      method = "cv" , ##Cross validation
+      number = k,
+      p = p,
+      verboseIter = T,
+      sampling = "down" ),
+  method = "rf")
+
+pre<- predict(fit, test, type = "prob")[,3]
+
+pre<- ifelse(pre <= 0.3 , "low" , 
+      ifelse((pre>0.3 & pre<=0.6) , "medium" , "high"))
+
+pre<- factor(pre, levels = c("low" , "medium" , "high"))
+
+```
+
+```{r}
+confusionMatrix(
+  reference = test$RiskLevel , 
+  data = pre)
+
+```
+
+
+
