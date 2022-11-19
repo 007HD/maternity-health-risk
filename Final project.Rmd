@@ -1,6 +1,6 @@
 ---
 title: "Final Project"
-author: "Group 2 - Andrea Carolina Herrera, Harsh Dholakia, Tao Tang"
+author: "Harsh Dholakia"
 date: "2022-11-19"
 output: html_document
 ---
